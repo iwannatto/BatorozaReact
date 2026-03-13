@@ -1,10 +1,8 @@
 export class Card {
-  private readonly id: number;
   private readonly n: number;
   private readonly color: number;
 
   constructor(id: number) {
-    this.id = id;
     this.n = (id % 15) + 1;
     this.color = Math.floor(id / 15);
   }
