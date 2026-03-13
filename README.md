@@ -3,6 +3,11 @@
 https://github.com/iwannatto/batoroza
 のReactにしてコードをだいぶ綺麗にした版
 
+# 遊べるURL
+
+一人用のみ
+https://iwannatto.github.io/BatorozaReact/
+
 # ルール（元リポジトリのを転記だが、保留してた実装をいくつかやっている）
 
 大まかなルールとしては、
