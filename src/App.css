@@ -1,0 +1,25 @@
+#root {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+#vm {
+  font-family: monospace;
+}
+
+#vm button {
+  margin: 0.25rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+#vm ul {
+  margin-top: 1rem;
+  padding-left: 1.5rem;
+}
+
+#vm li {
+  font-size: 0.9rem;
+  color: #555;
+}
