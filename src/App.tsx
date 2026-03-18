@@ -1,38 +1,45 @@
 import { useState, useEffect, useCallback } from "react";
-import { GameState, type Play } from "./game/gameLogic";
+import {
+  newGame,
+  applyDrawPhase,
+  applyDiscardPhase,
+  applyComputerTurn,
+  type Play,
+} from "./game/gameLogic";
+import { handToString, validPlays } from "./game/Hand";
 import DrawControls from "./components/DrawControls";
 import ValidPlays from "./components/ValidPlays";
 import GameLog from "./components/GameLog";
 import "./App.css";
 
 export default function App() {
-  const [state, setState] = useState(() => GameState.newGame());
+  const [state, setState] = useState(newGame);
 
   // コンピュータのターンを 100ms 間隔で実行
   useEffect(() => {
     const id = setInterval(() => {
-      setState(s => s.applyComputerTurn());
+      setState(s => applyComputerTurn(s));
     }, 100);
     return () => clearInterval(id);
   }, []);
 
-  const handleDrawTrue  = useCallback(() => setState(s => s.applyDrawPhase(true)), []);
-  const handleDrawFalse = useCallback(() => setState(s => s.applyDrawPhase(false)), []);
-  const handleDiscard   = useCallback((play: Play) => setState(s => s.applyDiscardPhase(play)), []);
+  const handleDrawTrue  = useCallback(() => setState(s => applyDrawPhase(s, true)), []);
+  const handleDrawFalse = useCallback(() => setState(s => applyDrawPhase(s, false)), []);
+  const handleDiscard   = useCallback((play: Play) => setState(s => applyDiscardPhase(s, play)), []);
 
-  const humanPlayer = state.humanPlayer();
-  const field = state.getField();
-  const isHumanTurn = field.isHumanTurn();
-  const inDrawPhase = state.getPhase() === "draw";
-  const inDiscardPhase = state.getPhase() === "discard";
+  const humanPlayer = state.players[0];
+  const field = state.field;
+  const isHumanTurn = field.currentPlayerId === 0;
+  const inDrawPhase = state.phase === "draw";
+  const inDiscardPhase = state.phase === "discard";
 
-  const drawButtonActive = isHumanTurn && inDrawPhase && field.getCurrentDrawable();
+  const drawButtonActive = isHumanTurn && inDrawPhase && field.currentDrawable;
   const notDrawButtonActive = isHumanTurn && inDrawPhase;
   const validPlaysActive = isHumanTurn && inDiscardPhase;
 
   return (
     <div id="vm">
-      <div>{humanPlayer.handString()}</div>
+      <div>{handToString(humanPlayer)}</div>
 
       <DrawControls
         drawButtonActive={drawButtonActive}
@@ -42,22 +49,22 @@ export default function App() {
       />
 
       <ValidPlays
-        plays={validPlaysActive ? humanPlayer.validPlays(field) : []}
+        plays={validPlaysActive ? validPlays(humanPlayer, field) : []}
         onPlay={handleDiscard}
       />
 
-      {state.gameFinished() && (
+      {state.phase === "game_over" && (
         <div>
           <p>
-            {state.getWinners() !== null
-              ? `player ${state.getWinners()!.join(", ")} win`
+            {state.winners !== null
+              ? `player ${state.winners.join(", ")} win`
               : "詰まり：終了"}
           </p>
-          <button onClick={() => setState(GameState.newGame())}>restart</button>
+          <button onClick={() => setState(newGame())}>restart</button>
         </div>
       )}
 
-      <GameLog log={state.getLog()} />
+      <GameLog log={state.log} />
     </div>
   );
 }

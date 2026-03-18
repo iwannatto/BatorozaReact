@@ -1,59 +1,43 @@
-import { Card } from "./Card";
+import { cardToString, type Card } from "./Card";
 import type { Field } from "./Field";
 
+export type CardPlay = { kind: "card"; card: Card };
+export type RevolutionPlay = { kind: "revolution"; cards: Card[] };
+export type PassPlay = { kind: "pass" };
 export type Play = CardPlay | RevolutionPlay | PassPlay;
 
-export class CardPlay {
-  private card: Card;
+export function playIncludesCard(play: Play, card: Card): boolean {
+  if (play.kind === "card") return play.card === card;
+  if (play.kind === "revolution") return play.cards.includes(card);
+  return false;
+}
 
-  constructor(card: Card) {
-    this.card = card;
-  }
+export function isValidToField(play: CardPlay, field: Field): boolean {
+  const lastCard = field.lastCard;
+  if (lastCard === null) return true;
+  if (play.card.color === lastCard.color) return false;
+  return field.underRevolution
+    ? play.card.n < lastCard.n
+    : play.card.n > lastCard.n;
+}
 
-  isEight(): boolean { return this.card.isEight(); }
-  includesCard(card: Card): boolean { return this.card === card; }
-  getCard(): Card { return this.card; }
+export function attackN(play: CardPlay, field: Field): number {
+  const fieldCard = field.lastCard;
+  if (fieldCard === null) return 0;
 
-  isValidToField(field: Field): boolean {
-    const lastCard = field.getLastCard();
-    if (lastCard === null) return true;
-    const underRevolution = field.isUnderRevolution();
-    if (this.card.getColor() === lastCard.getColor()) return false;
-    return underRevolution
-      ? this.card.getN() < lastCard.getN()
-      : this.card.getN() > lastCard.getN();
-  }
-
-  attackN(field: Field): number {
-    const fieldCard = field.getLastCard();
-    if (fieldCard === null) return 0;
-
-    const underRevolution = field.isUnderRevolution();
-    const attackColor: [number, number][] = [[0, 1], [1, 0], [2, 3], [3, 2]];
-    for (const [c1, c2] of attackColor) {
-      if (this.card.getColor() === c1 && fieldCard.getColor() === c2) {
-        let diff = this.card.getN() - fieldCard.getN();
-        if (underRevolution) diff *= -1;
-        return Math.floor(diff / 3);
-      }
+  const attackColor: [number, number][] = [[0, 1], [1, 0], [2, 3], [3, 2]];
+  for (const [c1, c2] of attackColor) {
+    if (play.card.color === c1 && fieldCard.color === c2) {
+      let diff = play.card.n - fieldCard.n;
+      if (field.underRevolution) diff *= -1;
+      return Math.floor(diff / 3);
     }
-    return 0;
   }
-
-  toString(): string { return this.card.toString(); }
+  return 0;
 }
 
-export class RevolutionPlay {
-  private cards: Card[];
-
-  constructor(cards: Card[]) {
-    this.cards = cards;
-  }
-
-  includesCard(card: Card): boolean { return this.cards.includes(card); }
-  toString(): string { return this.cards.map((c) => c.toString()).join(", "); }
-}
-
-export class PassPlay {
-  toString(): string { return "pass"; }
+export function playToString(play: Play): string {
+  if (play.kind === "card") return cardToString(play.card);
+  if (play.kind === "revolution") return play.cards.map(cardToString).join(", ");
+  return "pass";
 }

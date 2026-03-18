@@ -1,4 +1,4 @@
-import type { Play } from "../game/Play";
+import { playToString, type Play } from "../game/Play";
 
 interface ValidPlaysProps {
   plays: Play[];
@@ -12,7 +12,7 @@ export default function ValidPlays({ plays, onPlay }: ValidPlaysProps) {
     <div>
       {plays.map((play, i) => (
         <button key={i} onClick={() => onPlay(play)}>
-          {play.toString()}
+          {playToString(play)}
         </button>
       ))}
     </div>

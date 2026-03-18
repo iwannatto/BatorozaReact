@@ -1,101 +1,108 @@
-import { Card } from "./Card";
+import { cardToString, type Card } from "./Card";
 import type { Field } from "./Field";
-import { CardPlay, RevolutionPlay, PassPlay, type Play } from "./Play";
+import {
+  type Play,
+  type CardPlay,
+  type RevolutionPlay,
+  type PassPlay,
+  playIncludesCard,
+  isValidToField,
+} from "./Play";
 
-export class Hand {
-  private cards: Card[];
+export type Hand = { cards: Card[] };
 
-  constructor(cards: Card[]) {
-    this.cards = [...cards];
-    this.sort();
+function sortCards(cards: Card[]): void {
+  cards.sort((a, b) => {
+    if (a.n !== b.n) return a.n - b.n;
+    return a.color - b.color;
+  });
+}
+
+export function createHand(cards: Card[]): Hand {
+  const sorted = [...cards];
+  sortCards(sorted);
+  return { cards: sorted };
+}
+
+export function cloneHand(hand: Hand): Hand {
+  return { cards: [...hand.cards] };
+}
+
+export function handAdd(hand: Hand, card: Card): void {
+  hand.cards.push(card);
+  sortCards(hand.cards);
+}
+
+export function handDiscard(hand: Hand, play: Play): void {
+  if (play.kind !== "pass") {
+    hand.cards = hand.cards.filter((card) => !playIncludesCard(play, card));
   }
+}
 
-  private sort(): void {
-    this.cards.sort((a, b) => {
-      if (a.getN() !== b.getN()) return a.getN() - b.getN();
-      return a.getColor() - b.getColor();
-    });
-  }
+export function handLength(hand: Hand): number {
+  return hand.cards.length;
+}
 
-  private revolutions(): RevolutionPlay[] {
-    const revolutions: RevolutionPlay[] = [];
-    for (let n = 1; n <= 15; n++) {
-      if (n === 8) continue;
+export function handToString(hand: Hand): string {
+  return hand.cards.map(cardToString).join(" ");
+}
 
-      const nCards = this.cards.filter((card) => card.getN() === n);
+export function handHasWon(hand: Hand): boolean {
+  return hand.cards.length === 0;
+}
 
-      for (let i = 0; i < nCards.length - 2; i++) {
-        for (let j = i + 1; j < nCards.length - 1; j++) {
-          for (let k = j + 1; k < nCards.length; k++) {
-            revolutions.push(
-              new RevolutionPlay([nCards[i], nCards[j], nCards[k]]),
-            );
-          }
+function revolutions(hand: Hand): RevolutionPlay[] {
+  const result: RevolutionPlay[] = [];
+  for (let n = 1; n <= 15; n++) {
+    if (n === 8) continue;
+
+    const nCards = hand.cards.filter((card) => card.n === n);
+
+    for (let i = 0; i < nCards.length - 2; i++) {
+      for (let j = i + 1; j < nCards.length - 1; j++) {
+        for (let k = j + 1; k < nCards.length; k++) {
+          result.push({ kind: "revolution", cards: [nCards[i], nCards[j], nCards[k]] });
         }
       }
     }
-    return revolutions;
+  }
+  return result;
+}
+
+export function validPlays(hand: Hand, field: Field): Play[] {
+  const lastCard = field.lastCard;
+  const pass: PassPlay = { kind: "pass" };
+
+  // 8上がり禁止
+  if (hand.cards.length === 1 && hand.cards[0].n === 8) {
+    return lastCard === null ? [] : [pass];
   }
 
-  clone(): Hand {
-    return new Hand(this.cards);
-  }
+  const validCards: CardPlay[] = hand.cards.map((card) => ({ kind: "card" as const, card }));
 
-  add(card: Card): void {
-    this.cards.push(card);
-    this.sort();
-  }
+  // 革命上がり禁止なので革命がvalidCardsに入るのは手札を4枚以上持っているときのみ
+  const validCardsRevolutions: Play[] =
+    hand.cards.length >= 4
+      ? [...validCards, ...revolutions(hand)]
+      : validCards;
 
-  discard(play: Play): void {
-    if (!(play instanceof PassPlay)) {
-      this.cards = this.cards.filter((card) => !play.includesCard(card));
-    }
-  }
-
-  get length(): number {
-    return this.cards.length;
-  }
-
-  toString(): string {
-    return this.cards.map((c) => c.toString()).join(" ");
-  }
-
-  validPlays(field: Field): Play[] {
-    const lastCard = field.getLastCard();
-    const pass = new PassPlay();
-
-    // 8上がり禁止
-    if (this.cards.length === 1 && this.cards[0].isEight()) {
-      return lastCard === null ? [] : [pass];
-    }
-
-    const validCards = this.cards.map((card) => new CardPlay(card));
-
-    // 革命上がり禁止なので革命がvalidCardsに入るのは手札を4枚以上持っているときのみ
-    const validCardsRevolutions: Play[] =
-      this.cards.length >= 4
-        ? [...validCards, ...this.revolutions()]
-        : validCards;
-
-    if (lastCard === null) {
-      return validCardsRevolutions;
-    } else if (lastCard.isEight()) {
-      return [
-        ...validCardsRevolutions.filter(
-          (play) => play instanceof CardPlay && play.isEight(),
-        ),
-        pass,
-      ];
-    } else {
-      return [
-        ...validCardsRevolutions.filter(
-          (play) =>
-            play instanceof RevolutionPlay ||
-            (play instanceof CardPlay &&
-              play.isValidToField(field)),
-        ),
-        pass,
-      ];
-    }
+  if (lastCard === null) {
+    return validCardsRevolutions;
+  } else if (lastCard.n === 8) {
+    return [
+      ...validCardsRevolutions.filter(
+        (play): play is CardPlay => play.kind === "card" && play.card.n === 8,
+      ),
+      pass,
+    ];
+  } else {
+    return [
+      ...validCardsRevolutions.filter(
+        (play) =>
+          play.kind === "revolution" ||
+          (play.kind === "card" && isValidToField(play, field)),
+      ),
+      pass,
+    ];
   }
 }

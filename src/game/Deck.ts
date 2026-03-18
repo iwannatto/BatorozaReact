@@ -1,4 +1,4 @@
-import { Card } from "./Card";
+import { createCard, type Card } from "./Card";
 
 // よくわからんけどarrayの中身を均等にシャッフルしたことになるらしい
 function shuffle<T>(array: T[]): void {
@@ -10,32 +10,22 @@ function shuffle<T>(array: T[]): void {
   }
 }
 
-export class Deck {
-  private cards: Card[];
+export type Deck = { cards: Card[] };
 
-  private constructor(cards: Card[]) {
-    this.cards = cards;
-  }
+export function newDeck(): Deck {
+  const cards = Array.from({ length: 75 }, (_, k) => createCard(k));
+  shuffle(cards);
+  return { cards };
+}
 
-  static newDeck(): Deck {
-    const cards = Array.from({ length: 75 }, (_, k) => new Card(k));
-    shuffle(cards);
-    return new Deck(cards);
-  }
+export function deckWillOut(deck: Deck): boolean {
+  return deck.cards.length === 0;
+}
 
-  clone(): Deck {
-    return new Deck([...this.cards]);
+export function deckDraw(deck: Deck): Card {
+  const card = deck.cards.shift();
+  if (card === undefined) {
+    throw new Error("deck out");
   }
-
-  willOut(): boolean {
-    return this.cards.length === 0;
-  }
-
-  draw(): Card {
-    const card = this.cards.shift();
-    if (card === undefined) {
-      throw new Error("deck out");
-    }
-    return card;
-  }
+  return card;
 }
