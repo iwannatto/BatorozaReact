@@ -6,9 +6,13 @@ export type RevolutionPlay = { kind: "revolution"; cards: Card[] };
 export type PassPlay = { kind: "pass" };
 export type Play = CardPlay | RevolutionPlay | PassPlay;
 
+function sameCard(a: Card, b: Card): boolean {
+  return a.n === b.n && a.color === b.color;
+}
+
 export function playIncludesCard(play: Play, card: Card): boolean {
-  if (play.kind === "card") return play.card === card;
-  if (play.kind === "revolution") return play.cards.includes(card);
+  if (play.kind === "card") return sameCard(play.card, card);
+  if (play.kind === "revolution") return play.cards.some(c => sameCard(c, card));
   return false;
 }
 
