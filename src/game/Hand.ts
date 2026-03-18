@@ -24,10 +24,6 @@ export function createHand(cards: Card[]): Hand {
   return { cards: sorted };
 }
 
-export function cloneHand(hand: Hand): Hand {
-  return { cards: [...hand.cards] };
-}
-
 export function handAdd(hand: Hand, card: Card): void {
   hand.cards.push(card);
   sortCards(hand.cards);

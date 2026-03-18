@@ -1,7 +1,7 @@
+import { produce, type Draft } from "immer";
 import { newDeck, deckDraw, deckWillOut, type Deck } from "./Deck";
 import {
   createHand,
-  cloneHand,
   handAdd,
   handDiscard,
   handLength,
@@ -41,147 +41,137 @@ export function newGame(): GameState {
   };
 }
 
-function cloneState(state: GameState): GameState {
-  return {
-    deck: { cards: [...state.deck.cards] },
-    players: state.players.map(cloneHand),
-    field: { ...state.field },
-    log: [...state.log],
-    phase: state.phase,
-    winners: state.winners,
-    pendingWinner: state.pendingWinner,
-  };
-}
-
 // 山札切れのとき呼び出す。手札の少ない順に勝者を決定する。
-function applyDeckOut(state: GameState): GameState {
-  const minLength = Math.min(...state.players.map(handLength));
-  const winners = state.players.reduce((acc, p, i) => {
+function applyDeckOut(draft: Draft<GameState>): void {
+  const minLength = Math.min(...draft.players.map(handLength));
+  const winners = draft.players.reduce((acc, p, i) => {
     if (handLength(p) === minLength) acc.push(i);
     return acc;
   }, [] as number[]);
-  state.log.unshift(`deck out: player ${winners.join(", ")} win`);
-  state.phase = "game_over";
-  state.winners = winners;
-  return state;
+  draft.log.unshift(`deck out: player ${winners.join(", ")} win`);
+  draft.phase = "game_over";
+  draft.winners = winners;
 }
 
 export function applyDrawPhase(state: GameState, willDraw: boolean): GameState {
-  const newState = cloneState(state);
-  const playerId = newState.field.currentPlayerId;
-  const player = newState.players[playerId];
+  return produce(state, draft => {
+    const playerId = draft.field.currentPlayerId;
+    const player = draft.players[playerId];
 
-  // 一周して手札が0のまま（全員パスし続けた等）→ 勝利確定
-  if (handHasWon(player)) {
-    newState.log.unshift(`player ${playerId} win`);
-    newState.phase = "game_over";
-    newState.winners = [playerId];
-    return newState;
-  }
-
-  if (willDraw) {
-    const card = deckDraw(newState.deck);
-    handAdd(player, card);
-    if (deckWillOut(newState.deck)) {
-      return applyDeckOut(newState);
+    // 一周して手札が0のまま（全員パスし続けた等）→ 勝利確定
+    if (handHasWon(player)) {
+      draft.log.unshift(`player ${playerId} win`);
+      draft.phase = "game_over";
+      draft.winners = [playerId];
+      return;
     }
-  }
 
-  const plays = validPlays(player, newState.field);
+    if (willDraw) {
+      const card = deckDraw(draft.deck);
+      handAdd(player, card);
+      if (deckWillOut(draft.deck)) {
+        applyDeckOut(draft);
+        return;
+      }
+    }
 
-  if (plays.length === 0) {
-    newState.log.unshift("can't do anything");
-    newState.phase = "game_over";
-    newState.winners = null;
-    return newState;
-  }
+    const plays = validPlays(player, draft.field);
 
-  newState.phase = "discard";
-  return newState;
+    if (plays.length === 0) {
+      draft.log.unshift("can't do anything");
+      draft.phase = "game_over";
+      draft.winners = null;
+      return;
+    }
+
+    draft.phase = "discard";
+  });
 }
 
 export function applyDiscardPhase(state: GameState, play: Play): GameState {
-  const newState = cloneState(state);
-  const field = newState.field;
-  const playerId = field.currentPlayerId;
-  const player = newState.players[playerId];
-  const prevPendingWinner = newState.pendingWinner;
+  return produce(state, draft => {
+    const field = draft.field;
+    const playerId = field.currentPlayerId;
+    const player = draft.players[playerId];
+    const prevPendingWinner = draft.pendingWinner;
 
-  const oldLastCard = field.lastCard;
-  const oldLastPlayerId = field.lastPlayerId;
+    const oldLastCard = field.lastCard;
+    const oldLastPlayerId = field.lastPlayerId;
 
-  handDiscard(player, play);
-  newState.log.unshift(`${playerId} ${playToString(play)} | ${handLength(player)}`);
+    handDiscard(player, play);
+    draft.log.unshift(`${playerId} ${playToString(play)} | ${handLength(player)}`);
 
-  // 攻撃
-  if (play.kind === "card" && oldLastPlayerId !== null) {
-    const attacked = newState.players[oldLastPlayerId];
-    const n = attackN(play as CardPlay, field);
-    if (n > 0) {
-      newState.log.unshift(
-        `attack ${n} from ${playerId} to ${oldLastPlayerId}`,
-      );
-      for (let i = 0; i < n; i++) {
-        if (deckWillOut(newState.deck)) {
-          return applyDeckOut(newState);
+    // 攻撃
+    if (play.kind === "card" && oldLastPlayerId !== null) {
+      const attacked = draft.players[oldLastPlayerId];
+      const n = attackN(play as CardPlay, field);
+      if (n > 0) {
+        draft.log.unshift(
+          `attack ${n} from ${playerId} to ${oldLastPlayerId}`,
+        );
+        for (let i = 0; i < n; i++) {
+          if (deckWillOut(draft.deck)) {
+            applyDeckOut(draft);
+            return;
+          }
+          const card = deckDraw(draft.deck);
+          handAdd(attacked, card);
         }
-        const card = deckDraw(newState.deck);
-        handAdd(attacked, card);
-      }
-      if (deckWillOut(newState.deck)) {
-        return applyDeckOut(newState);
+        if (deckWillOut(draft.deck)) {
+          applyDeckOut(draft);
+          return;
+        }
       }
     }
-  }
 
-  // パス以外の行動 → 攻撃後に保留勝者の手札が0のまま → 勝利確定
-  if (play.kind !== "pass") {
-    if (prevPendingWinner !== null && handHasWon(newState.players[prevPendingWinner])) {
-      newState.log.unshift(`player ${prevPendingWinner} win`);
-      newState.phase = "game_over";
-      newState.winners = [prevPendingWinner];
-      return newState;
+    // パス以外の行動 → 攻撃後に保留勝者の手札が0のまま → 勝利確定
+    if (play.kind !== "pass") {
+      if (prevPendingWinner !== null && handHasWon(draft.players[prevPendingWinner])) {
+        draft.log.unshift(`player ${prevPendingWinner} win`);
+        draft.phase = "game_over";
+        draft.winners = [prevPendingWinner];
+        return;
+      }
+      // 現プレイヤーが手札0 → 次の非パス行動まで保留
+      draft.pendingWinner = handHasWon(player) ? playerId : null;
     }
-    // 現プレイヤーが手札0 → 次の非パス行動まで保留
-    newState.pendingWinner = handHasWon(player) ? playerId : null;
-  }
-  // パスのとき: pendingWinner はそのまま（攻撃の可能性が残るため）
+    // パスのとき: pendingWinner はそのまま（攻撃の可能性が残るため）
 
-  // 革命の反映
-  if (play.kind === "revolution") {
-    field.underRevolution = !field.underRevolution;
-  }
+    // 革命の反映
+    if (play.kind === "revolution") {
+      field.underRevolution = !field.underRevolution;
+    }
 
-  // 8切り返し判定
-  const isEightReturn =
-    play.kind === "card" &&
-    play.card.n === 8 &&
-    oldLastCard !== null &&
-    oldLastCard.n === 8;
+    // 8切り返し判定
+    const isEightReturn =
+      play.kind === "card" &&
+      play.card.n === 8 &&
+      oldLastCard !== null &&
+      oldLastCard.n === 8;
 
-  // フィールドの更新
-  if (play.kind === "pass") {
-    if (oldLastPlayerId !== null && oldLastPlayerId === (playerId + 1) % 4) {
+    // フィールドの更新
+    if (play.kind === "pass") {
+      if (oldLastPlayerId !== null && oldLastPlayerId === (playerId + 1) % 4) {
+        field.lastCard = null;
+        field.lastPlayerId = null;
+      }
+    } else if (play.kind === "revolution" || isEightReturn) {
       field.lastCard = null;
       field.lastPlayerId = null;
+    } else {
+      // play.kind === "card" かつ 8切り返しでない
+      field.lastCard = (play as CardPlay).card;
+      field.lastPlayerId = playerId;
     }
-  } else if (play.kind === "revolution" || isEightReturn) {
-    field.lastCard = null;
-    field.lastPlayerId = null;
-  } else {
-    // play.kind === "card" かつ 8切り返しでない
-    field.lastCard = (play as CardPlay).card;
-    field.lastPlayerId = playerId;
-  }
 
-  // 次プレイヤーの決定
-  field.currentPlayerId = isEightReturn ? playerId : (playerId + 1) % 4;
+    // 次プレイヤーの決定
+    field.currentPlayerId = isEightReturn ? playerId : (playerId + 1) % 4;
 
-  // currentDrawable の更新
-  field.currentDrawable = field.lastCard !== null && field.lastCard.n !== 8;
+    // currentDrawable の更新
+    field.currentDrawable = field.lastCard !== null && field.lastCard.n !== 8;
 
-  newState.phase = field.currentPlayerId === 0 ? "draw" : "computer";
-  return newState;
+    draft.phase = field.currentPlayerId === 0 ? "draw" : "computer";
+  });
 }
 
 export function applyComputerTurn(state: GameState): GameState {
